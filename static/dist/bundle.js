@@ -18,6 +18,8 @@ doc.on('op', showNumbers);
 
 function showNumbers() {
   document.querySelector('#num-clicks').textContent = doc.data.numClicks;
+  document.querySelector('#myTextarea').textContent = doc.data.numClicks;
+
 };
 
 // When clicking on the '+1' button, change the number in the local
