@@ -6,11 +6,12 @@ var ReconnectingWebSocket = require('reconnecting-websocket');
 var socket = new ReconnectingWebSocket('ws://' + window.location.host);
 
 var connection = new sharedb.Connection(socket);
-var programeArea= document.getElementById('programeArea');
+var programArea= document.getElementById('programArea');
 var element = document.querySelector('textarea');
 var statusSpan = document.getElementById('status-span');
+var textbox = document.getElementById('textbox');
 statusSpan.innerHTML = 'Not Connected';
-
+textbox.innerHTML = 'Not Connected';
 element.style.backgroundColor = 'gray';
 socket.onopen = function() {
   statusSpan.innerHTML = 'Connected';
@@ -32,6 +33,7 @@ var doc = connection.get('examples', 'textarea');
 doc.subscribe(function(err) {
   if (err) throw err;
 
-  var binding = new StringBinding(element, doc, ['content']);
+  var binding = new StringBinding(programArea, doc, ['content']);
   binding.setup();
+  textbox.innerHTML=programArea.innerHTML;
 });
