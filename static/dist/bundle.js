@@ -10,9 +10,10 @@ var connection = new sharedb.Connection(socket);
 var programArea= document.getElementById('programArea');
 var element = document.querySelector('textarea');
 var statusSpan = document.getElementById('status-span');
-var textbox = document.getElementById('textbox');
+var textbox = document.getElementById('textbox1');
 statusSpan.innerHTML = 'Not Connected';
-textbox.innerHTML = 'Not Connected';
+textbox.innerHTML = 'hi';
+programArea.value="hi";
 element.style.backgroundColor = 'gray';
 socket.onopen = function() {
   statusSpan.innerHTML = 'Connected';
@@ -36,7 +37,7 @@ doc.subscribe(function(err) {
 
   var binding = new StringBinding(programArea, doc, ['content']);
   binding.setup();
-  textbox.innerHTML=programArea.innerHTML;
+  textbox.innerHTML=programArea.value;
 });
 
 },{"reconnecting-websocket":8,"sharedb-string-binding":9,"sharedb/lib/client":12}],2:[function(require,module,exports){
