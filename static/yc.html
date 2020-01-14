@@ -6,17 +6,10 @@
 body {
   background: #ddd;
 }
-#container {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  bottom: 24px;
-  left: 24px;
-}
+
 textarea {
   font: 14px/1.3 sans-serif;
   padding: 4px 8px;
-  height: 100%;
   width: 100%;
   box-sizing: border-box;
 }
@@ -25,11 +18,14 @@ textarea {
 }
 </style>
 
+
+<body>
 <div id="container">
-  <h1 id="title">Text Area Example with Reconnecting Websockets</h1>
-  <p>Connection Status: <span id="status-span"></span></p>
-  <p>Content: <span id="textbox1"></span></p>
-  <textarea autofocus id="programArea"></textarea>
-</div>
+          <h1 id="title">Text Area Example with Reconnecting Websockets</h1>
+          <p>Connection Status: <span id="status-span"></span></p>
+          <p>Content: <span id="textbox1"></span></p>
+          <textarea  id="programArea"></textarea>
+        </div>
 
 <script src="dist/bundle.js"></script>
+</body>
