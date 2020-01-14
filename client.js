@@ -36,5 +36,15 @@ doc.subscribe(function(err) {
 
   var binding = new StringBinding(programArea, doc, ['content']);
   binding.setup();
-  textbox.innerHTML=programArea.value;
+
 });
+
+programArea.addEventListener('input',changeContent);
+
+function changeContent(e)
+{
+	textbox.innerHTML=e.target.value;
+}
+
+
+

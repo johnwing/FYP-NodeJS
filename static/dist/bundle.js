@@ -37,8 +37,18 @@ doc.subscribe(function(err) {
 
   var binding = new StringBinding(programArea, doc, ['content']);
   binding.setup();
-  textbox.innerHTML=programArea.value;
+
 });
+
+programArea.addEventListener('input',changeContent);
+
+function changeContent(e)
+{
+	textbox.innerHTML=e.target.value;
+}
+
+
+
 
 },{"reconnecting-websocket":8,"sharedb-string-binding":9,"sharedb/lib/client":12}],2:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
