@@ -1,48 +1,42 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-(function (global){
-var ReconnectingWebSocket = require('reconnecting-websocket');
 var sharedb = require('sharedb/lib/client');
+var StringBinding = require('sharedb-string-binding');
 
 // Open WebSocket connection to ShareDB server
+var ReconnectingWebSocket = require('reconnecting-websocket');
 var socket = new ReconnectingWebSocket('ws://' + window.location.host);
 var connection = new sharedb.Connection(socket);
 
-// Create local Doc instance mapped to 'examples' collection document with id 'counter'
-var doc = connection.get('examples', 'counter');
+var element = document.querySelector('textarea');
+var statusSpan = document.getElementById('status-span');
+statusSpan.innerHTML = 'Not Connected';
 
-// Get initial value of document and subscribe to changes
-doc.subscribe(showNumbers);
-// When document changes (by this client or any other, or the server),
-// update the number on the page
-doc.on('op', showNumbers);
-
-function showNumbers() {
-  document.querySelector('#num-clicks').textContent = doc.data.numClicks;
-  document.querySelector('#myTextarea').textContent = doc.data.numClicks;
-
+element.style.backgroundColor = 'gray';
+socket.onopen = function() {
+  statusSpan.innerHTML = 'Connected';
+  element.style.backgroundColor = 'white';
 };
 
-// When clicking on the '+1' button, change the number in the local
-// document and sync the change to the server and other connected
-// clients
-function increment() {
-  // Increment `doc.data.numClicks`. See
-  // https://github.com/ottypes/json0 for list of valid operations.
-  doc.submitOp([{p: ['numClicks'], na: 3}]);
-}
+socket.onclose = function() {
+  statusSpan.innerHTML = 'Closed';
+  element.style.backgroundColor = 'gray';
+};
 
-// Expose to index.html
-global.increment = increment;
+socket.onerror = function() {
+  statusSpan.innerHTML = 'Error';
+  element.style.backgroundColor = 'red';
+};
 
+// Create local Doc instance mapped to 'examples' collection document with id 'textarea'
+var doc = connection.get('examples', 'textarea');
+doc.subscribe(function(err) {
+  if (err) throw err;
 
+  var binding = new StringBinding(element, doc, ['content']);
+  binding.setup();
+});
 
-
-
-
-
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"reconnecting-websocket":8,"sharedb/lib/client":11}],2:[function(require,module,exports){
+},{"reconnecting-websocket":8,"sharedb-string-binding":9,"sharedb/lib/client":12}],2:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2323,6 +2317,117 @@ var ReconnectingWebSocket = /** @class */ (function () {
 module.exports = ReconnectingWebSocket;
 
 },{}],9:[function(require,module,exports){
+var TextDiffBinding = require('text-diff-binding');
+
+module.exports = StringBinding;
+
+function StringBinding(element, doc, path) {
+  TextDiffBinding.call(this, element);
+  this.doc = doc;
+  this.path = path || [];
+  this._opListener = null;
+  this._inputListener = null;
+}
+StringBinding.prototype = Object.create(TextDiffBinding.prototype);
+StringBinding.prototype.constructor = StringBinding;
+
+StringBinding.prototype.setup = function() {
+  this.update();
+  this.attachDoc();
+  this.attachElement();
+};
+
+StringBinding.prototype.destroy = function() {
+  this.detachElement();
+  this.detachDoc();
+};
+
+StringBinding.prototype.attachElement = function() {
+  var binding = this;
+  this._inputListener = function() {
+    binding.onInput();
+  };
+  this.element.addEventListener('input', this._inputListener, false);
+};
+
+StringBinding.prototype.detachElement = function() {
+  this.element.removeEventListener('input', this._inputListener, false);
+};
+
+StringBinding.prototype.attachDoc = function() {
+  var binding = this;
+  this._opListener = function(op, source) {
+    binding._onOp(op, source);
+  };
+  this.doc.on('op', this._opListener);
+};
+
+StringBinding.prototype.detachDoc = function() {
+  this.doc.removeListener('op', this._opListener);
+};
+
+StringBinding.prototype._onOp = function(op, source) {
+  if (source === this) return;
+  if (op.length === 0) return;
+  if (op.length > 1) {
+    throw new Error('Op with multiple components emitted');
+  }
+  var component = op[0];
+  if (isSubpath(this.path, component.p)) {
+    this._parseInsertOp(component);
+    this._parseRemoveOp(component);
+  } else if (isSubpath(component.p, this.path)) {
+    this._parseParentOp();
+  }
+};
+
+StringBinding.prototype._parseInsertOp = function(component) {
+  if (!component.si) return;
+  var index = component.p[component.p.length - 1];
+  var length = component.si.length;
+  this.onInsert(index, length);
+};
+
+StringBinding.prototype._parseRemoveOp = function(component) {
+  if (!component.sd) return;
+  var index = component.p[component.p.length - 1];
+  var length = component.sd.length;
+  this.onRemove(index, length);
+};
+
+StringBinding.prototype._parseParentOp = function() {
+  this.update();
+};
+
+StringBinding.prototype._get = function() {
+  var value = this.doc.data;
+  for (var i = 0; i < this.path.length; i++) {
+    var segment = this.path[i];
+    value = value[segment];
+  }
+  return value;
+};
+
+StringBinding.prototype._insert = function(index, text) {
+  var path = this.path.concat(index);
+  var op = {p: path, si: text};
+  this.doc.submitOp(op, {source: this});
+};
+
+StringBinding.prototype._remove = function(index, text) {
+  var path = this.path.concat(index);
+  var op = {p: path, sd: text};
+  this.doc.submitOp(op, {source: this});
+};
+
+function isSubpath(path, testPath) {
+  for (var i = 0; i < path.length; i++) {
+    if (testPath[i] !== path[i]) return false;
+  }
+  return true;
+}
+
+},{"text-diff-binding":24}],10:[function(require,module,exports){
 (function (process){
 var Doc = require('./doc');
 var Query = require('./query');
@@ -3042,7 +3147,7 @@ Connection.prototype._handleSnapshotFetch = function(error, message) {
 };
 
 }).call(this,require('_process'))
-},{"../emitter":16,"../error":17,"../logger":18,"../types":21,"../util":22,"./doc":10,"./query":12,"./snapshot-request/snapshot-timestamp-request":14,"./snapshot-request/snapshot-version-request":15,"_process":7}],10:[function(require,module,exports){
+},{"../emitter":17,"../error":18,"../logger":19,"../types":22,"../util":23,"./doc":11,"./query":13,"./snapshot-request/snapshot-timestamp-request":15,"./snapshot-request/snapshot-version-request":16,"_process":7}],11:[function(require,module,exports){
 (function (process){
 var emitter = require('../emitter');
 var logger = require('../logger');
@@ -4013,7 +4118,7 @@ function callEach(callbacks, err) {
 }
 
 }).call(this,require('_process'))
-},{"../emitter":16,"../error":17,"../logger":18,"../types":21,"_process":7}],11:[function(require,module,exports){
+},{"../emitter":17,"../error":18,"../logger":19,"../types":22,"_process":7}],12:[function(require,module,exports){
 exports.Connection = require('./connection');
 exports.Doc = require('./doc');
 exports.Error = require('../error');
@@ -4021,7 +4126,7 @@ exports.Query = require('./query');
 exports.types = require('../types');
 exports.logger = require('../logger');
 
-},{"../error":17,"../logger":18,"../types":21,"./connection":9,"./doc":10,"./query":12}],12:[function(require,module,exports){
+},{"../error":18,"../logger":19,"../types":22,"./connection":10,"./doc":11,"./query":13}],13:[function(require,module,exports){
 (function (process){
 var emitter = require('../emitter');
 
@@ -4223,7 +4328,7 @@ Query.prototype._handleExtra = function(extra) {
 };
 
 }).call(this,require('_process'))
-},{"../emitter":16,"_process":7}],13:[function(require,module,exports){
+},{"../emitter":17,"_process":7}],14:[function(require,module,exports){
 var Snapshot = require('../../snapshot');
 var emitter = require('../../emitter');
 
@@ -4279,7 +4384,7 @@ SnapshotRequest.prototype._handleResponse = function(error, message) {
   this.callback(null, snapshot);
 };
 
-},{"../../emitter":16,"../../snapshot":20}],14:[function(require,module,exports){
+},{"../../emitter":17,"../../snapshot":21}],15:[function(require,module,exports){
 var SnapshotRequest = require('./snapshot-request');
 var util = require('../../util');
 
@@ -4307,7 +4412,7 @@ SnapshotTimestampRequest.prototype._message = function() {
   };
 };
 
-},{"../../util":22,"./snapshot-request":13}],15:[function(require,module,exports){
+},{"../../util":23,"./snapshot-request":14}],16:[function(require,module,exports){
 var SnapshotRequest = require('./snapshot-request');
 var util = require('../../util');
 
@@ -4335,7 +4440,7 @@ SnapshotVersionRequest.prototype._message = function() {
   };
 };
 
-},{"../../util":22,"./snapshot-request":13}],16:[function(require,module,exports){
+},{"../../util":23,"./snapshot-request":14}],17:[function(require,module,exports){
 var EventEmitter = require('events').EventEmitter;
 
 exports.EventEmitter = EventEmitter;
@@ -4347,7 +4452,7 @@ function mixin(Constructor) {
   }
 }
 
-},{"events":2}],17:[function(require,module,exports){
+},{"events":2}],18:[function(require,module,exports){
 function ShareDBError(code, message) {
   this.code = code;
   this.message = message || '';
@@ -4417,12 +4522,12 @@ ShareDBError.CODES = {
 
 module.exports = ShareDBError;
 
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 var Logger = require('./logger');
 var logger = new Logger();
 module.exports = logger;
 
-},{"./logger":19}],19:[function(require,module,exports){
+},{"./logger":20}],20:[function(require,module,exports){
 var SUPPORTED_METHODS = [
   'info',
   'warn',
@@ -4450,7 +4555,7 @@ Logger.prototype.setMethods = function(overrides) {
   });
 };
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 module.exports = Snapshot;
 function Snapshot(id, version, type, data, meta) {
   this.id = id;
@@ -4460,7 +4565,7 @@ function Snapshot(id, version, type, data, meta) {
   this.m = meta;
 }
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 
 exports.defaultType = require('ot-json0').type;
 
@@ -4473,7 +4578,7 @@ exports.register = function(type) {
 
 exports.register(exports.defaultType);
 
-},{"ot-json0":4}],22:[function(require,module,exports){
+},{"ot-json0":4}],23:[function(require,module,exports){
 
 exports.doNothing = doNothing;
 function doNothing() {}
@@ -4497,6 +4602,108 @@ exports.isValidVersion = function(version) {
 
 exports.isValidTimestamp = function(timestamp) {
   return exports.isValidVersion(timestamp);
+};
+
+},{}],24:[function(require,module,exports){
+module.exports = TextDiffBinding;
+
+function TextDiffBinding(element) {
+  this.element = element;
+}
+
+TextDiffBinding.prototype._get =
+TextDiffBinding.prototype._insert =
+TextDiffBinding.prototype._remove = function() {
+  throw new Error('`_get()`, `_insert(index, length)`, and `_remove(index, length)` prototype methods must be defined.');
+};
+
+TextDiffBinding.prototype._getElementValue = function() {
+  var value = this.element.value;
+  // IE and Opera replace \n with \r\n. Always store strings as \n
+  return value.replace(/\r\n/g, '\n');
+};
+
+TextDiffBinding.prototype._getInputEnd = function(previous, value) {
+  if (this.element !== document.activeElement) return null;
+  var end = value.length - this.element.selectionStart;
+  if (end === 0) return end;
+  if (previous.slice(previous.length - end) !== value.slice(value.length - end)) return null;
+  return end;
+};
+
+TextDiffBinding.prototype.onInput = function() {
+  var previous = this._get();
+  var value = this._getElementValue();
+  if (previous === value) return;
+
+  var start = 0;
+  // Attempt to use the DOM cursor position to find the end
+  var end = this._getInputEnd(previous, value);
+  if (end === null) {
+    // If we failed to find the end based on the cursor, do a diff. When
+    // ambiguous, prefer to locate ops at the end of the string, since users
+    // more frequently add or remove from the end of a text input
+    while (previous.charAt(start) === value.charAt(start)) {
+      start++;
+    }
+    end = 0;
+    while (
+      previous.charAt(previous.length - 1 - end) === value.charAt(value.length - 1 - end) &&
+      end + start < previous.length &&
+      end + start < value.length
+    ) {
+      end++;
+    }
+  } else {
+    while (
+      previous.charAt(start) === value.charAt(start) &&
+      start + end < previous.length &&
+      start + end < value.length
+    ) {
+      start++;
+    }
+  }
+
+  if (previous.length !== start + end) {
+    var removed = previous.slice(start, previous.length - end);
+    this._remove(start, removed);
+  }
+  if (value.length !== start + end) {
+    var inserted = value.slice(start, value.length - end);
+    this._insert(start, inserted);
+  }
+};
+
+TextDiffBinding.prototype.onInsert = function(index, length) {
+  this._transformSelectionAndUpdate(index, length, insertCursorTransform);
+};
+function insertCursorTransform(index, length, cursor) {
+  return (index < cursor) ? cursor + length : cursor;
+}
+
+TextDiffBinding.prototype.onRemove = function(index, length) {
+  this._transformSelectionAndUpdate(index, length, removeCursorTransform);
+};
+function removeCursorTransform(index, length, cursor) {
+  return (index < cursor) ? cursor - Math.min(length, cursor - index) : cursor;
+}
+
+TextDiffBinding.prototype._transformSelectionAndUpdate = function(index, length, transformCursor) {
+  if (document.activeElement === this.element) {
+    var selectionStart = transformCursor(index, length, this.element.selectionStart);
+    var selectionEnd = transformCursor(index, length, this.element.selectionEnd);
+    var selectionDirection = this.element.selectionDirection;
+    this.update();
+    this.element.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+  } else {
+    this.update();
+  }
+};
+
+TextDiffBinding.prototype.update = function() {
+  var value = this._get();
+  if (this._getElementValue() === value) return;
+  this.element.value = value;
 };
 
 },{}]},{},[1]);
