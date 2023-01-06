@@ -24,6 +24,6 @@
   },
   "devDependencies": {
     "browserify": "^16.5.0",
-    "scratch-blocks": "0.1.0-prerelease.1578322100"
+    "scratch-blocks": "0.1.0-prerelease.20221207082607"
   }
 }
